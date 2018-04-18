@@ -50,8 +50,9 @@ public class ZooKeeperServerMain {
     public static void main(String[] args) {
         ZooKeeperServerMain main = new ZooKeeperServerMain();
         /**
-         * 初始化参数最少2个，最多4个
-         * 端口、数据日志目录、tickTime(心跳时间？)、maxcnxns？
+         * 初始化参数最少1个，最多4个
+         * 1. 1个时：配置文件路径
+         * 2. 2个以上时：端口、数据日志目录、tickTime(心跳时间？)、maxcnxns？
          clientPortAddress = new InetSocketAddress(Integer.parseInt(args[0]));
          dataDir = args[1];
          dataLogDir = dataDir;
@@ -62,11 +63,10 @@ public class ZooKeeperServerMain {
          maxClientCnxns = Integer.parseInt(args[3]);
          }
          */
-        String[] initArgs = new String[2];
-        initArgs[0] = "2181";
-        initArgs[1] = "C:\\coder\\logs";
+//        String[] initArgs = new String[1];
+//        initArgs[0] = "C:\\coder\\IdeaProjects\\zk-learn\\src\\main\\resources\\zoo0.cfg";
         try {
-            main.initializeAndRun(initArgs);
+            main.initializeAndRun(args);
         } catch (IllegalArgumentException e) {
             LOG.error("Invalid arguments, exiting abnormally", e);
             LOG.info(USAGE);

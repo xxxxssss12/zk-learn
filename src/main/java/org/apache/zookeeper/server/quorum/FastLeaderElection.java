@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import com.alibaba.fastjson.JSON;
 import org.apache.zookeeper.jmx.MBeanRegistry;
 import org.apache.zookeeper.server.ZooKeeperThread;
 import org.apache.zookeeper.server.quorum.QuorumCnxManager.Message;
@@ -804,6 +805,9 @@ public class FastLeaderElection implements Election {
            self.start_fle = System.currentTimeMillis();
         }
         try {
+            /**
+             * 票箱
+             */
             HashMap<Long, Vote> recvset = new HashMap<Long, Vote>();
 
             HashMap<Long, Vote> outofelection = new HashMap<Long, Vote>();
@@ -811,12 +815,24 @@ public class FastLeaderElection implements Election {
             int notTimeout = finalizeWait;
 
             synchronized(this){
+                /**
+                 * logicalclock++, 表示是新一轮leader选举，它是一个内存值，
+                 * 服务器重启就会导致该值归0，所以如果服务器活得越久，这个值随
+                 * 着应该越大，每一轮选举会保持所有机器该值始终是其中相同的最大值。
+                 */
                 logicalclock++;
+                /**
+                 * 推举自己作为leader
+                 */
                 updateProposal(getInitId(), getInitLastLoggedZxid(), getPeerEpoch());
             }
 
             LOG.info("New election. My id =  " + self.getId() +
                     ", proposed zxid=0x" + Long.toHexString(proposedZxid));
+            /**
+             * 将自己服务器上存储的最大zxid，自己的服务器id,自己的状态(looking)notify所有的服务器，
+             * 告知大家我想当leader.
+             */
             sendNotifications();
 
             /*
@@ -856,9 +872,14 @@ public class FastLeaderElection implements Election {
                      * Only proceed if the vote comes from a replica in the
                      * voting view.
                      */
+                    LOG.debug("logicalclock=" + logicalclock + "recvN---" + n.toString());
                     switch (n.state) {
                     case LOOKING:
                         // If notification > current, replace and send messages out
+                        /**
+                         * 收到的远端节点选票的logicalclock>本地，清空票箱，比较选票，
+                         * 如果远端节点选票优于本地，则更新自己的投票为远端选票，并重新通知其他节点。
+                         */
                         if (n.electionEpoch > logicalclock) {
                             logicalclock = n.electionEpoch;
                             recvset.clear();
@@ -871,6 +892,9 @@ public class FastLeaderElection implements Election {
                                         getPeerEpoch());
                             }
                             sendNotifications();
+                            /**
+                             * 收到的远端节点选票的logicalclock < 本地，不作任何处理
+                             */
                         } else if (n.electionEpoch < logicalclock) {
                             if(LOG.isDebugEnabled()){
                                 LOG.debug("Notification election epoch is smaller than logicalclock. n.electionEpoch = 0x"
@@ -878,6 +902,9 @@ public class FastLeaderElection implements Election {
                                         + ", logicalclock=0x" + Long.toHexString(logicalclock));
                             }
                             break;
+                            /**
+                             * 收到的远端节点选票的logicalclock = 本地，比较选票，如果远端节点选票优于本地，更新本地选票并通知其他节点。
+                             */
                         } else if (totalOrderPredicate(n.leader, n.zxid, n.peerEpoch,
                                 proposedLeader, proposedZxid, proposedEpoch)) {
                             updateProposal(n.leader, n.zxid, n.peerEpoch);
@@ -890,13 +917,19 @@ public class FastLeaderElection implements Election {
                                     ", proposed zxid=0x" + Long.toHexString(n.zxid) +
                                     ", proposed election epoch=0x" + Long.toHexString(n.electionEpoch));
                         }
-
+                        /**
+                         * 更新票箱中的远端节点选票
+                         */
                         recvset.put(n.sid, new Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));
-
+                        /**
+                         * （google翻译。）终止判断。 给定一组选票，确定是否足以宣布选举结束。
+                         *
+                         1) 如果收集到了所有服务器的投票，
+                         2) 如果此时收集的投票大于1/2服务器数,那么再等待一个时段，如果没有其他响应到来或者到来的响应没有新的选票产生。
+                         */
                         if (termPredicate(recvset,
                                 new Vote(proposedLeader, proposedZxid,
                                         logicalclock, proposedEpoch))) {
-
                             // Verify if there is any change in the proposed leader
                             while((n = recvqueue.poll(finalizeWait,
                                     TimeUnit.MILLISECONDS)) != null){
@@ -908,10 +941,14 @@ public class FastLeaderElection implements Election {
                             }
 
                             /*
+                                没有接收到新的消息
                              * This predicate is true once we don't read any new
                              * relevant message from the reception queue
                              */
                             if (n == null) {
+                                /**
+                                 * 改变节点状态为leader或follower
+                                 */
                                 self.setPeerState((proposedLeader == self.getId()) ?
                                         ServerState.LEADING: learningState());
 
@@ -919,6 +956,9 @@ public class FastLeaderElection implements Election {
                                                         proposedZxid,
                                                         logicalclock,
                                                         proposedEpoch);
+                                /**
+                                 * 记录最终选票，并且清空票箱，结束这次选举。
+                                 */
                                 leaveInstance(endVote);
                                 return endVote;
                             }

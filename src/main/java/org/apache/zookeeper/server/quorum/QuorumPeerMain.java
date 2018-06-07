@@ -19,6 +19,7 @@ package org.apache.zookeeper.server.quorum;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 
 import javax.management.JMException;
 

@@ -615,7 +615,7 @@ public class FastLeaderElection implements Election {
         if(self.getQuorumVerifier().getWeight(newId) == 0){
             return false;
         }
-        
+
         /*
          * We return true if one of the following three cases hold:
          * 1- New epoch is higher
@@ -623,8 +623,8 @@ public class FastLeaderElection implements Election {
          * 3- New epoch is the same as current epoch, new zxid is the same
          *  as current zxid, but server id is higher.
          */
-        
-        return ((newEpoch > curEpoch) || 
+
+        return ((newEpoch > curEpoch) ||
                 ((newEpoch == curEpoch) &&
                 ((newZxid > curZxid) || ((newZxid == curZxid) && (newId > curId)))));
     }
@@ -633,6 +633,8 @@ public class FastLeaderElection implements Election {
      * Termination predicate. Given a set of votes, determines if
      * have sufficient to declare the end of the election round.
      *
+     *  vote.equals(票箱中的选票) 则将选票所属远程节点的id放入set。
+     *  选票超过半数，则为true。否则为false
      *  @param votes    Set of votes
      *  @param l        Identifier of the vote received last
      *  @param zxid     zxid of the the vote received last
@@ -816,7 +818,7 @@ public class FastLeaderElection implements Election {
 
             synchronized(this){
                 /**
-                 * logicalclock++, 表示是新一轮leader选举，它是一个内存值，
+                 * logicalclock==electionEpoch。logicalclock++, 表示是新一轮leader选举，它是一个内存值，
                  * 服务器重启就会导致该值归0，所以如果服务器活得越久，这个值随
                  * 着应该越大，每一轮选举会保持所有机器该值始终是其中相同的最大值。
                  */
@@ -872,7 +874,7 @@ public class FastLeaderElection implements Election {
                      * Only proceed if the vote comes from a replica in the
                      * voting view.
                      */
-                    LOG.debug("logicalclock=" + logicalclock + "recvN---" + n.toString());
+                    LOG.debug("logicalclock=" + logicalclock + ";recvN---" + n.toString());
                     switch (n.state) {
                     case LOOKING:
                         // If notification > current, replace and send messages out
@@ -923,9 +925,9 @@ public class FastLeaderElection implements Election {
                         recvset.put(n.sid, new Vote(n.leader, n.zxid, n.electionEpoch, n.peerEpoch));
                         /**
                          * （google翻译。）终止判断。 给定一组选票，确定是否足以宣布选举结束。
-                         *
-                         1) 如果收集到了所有服务器的投票，
-                         2) 如果此时收集的投票大于1/2服务器数,那么再等待一个时段，如果没有其他响应到来或者到来的响应没有新的选票产生。
+                         *   Termination predicate. Given a set of votes, determines if
+                         *   have sufficient to declare the end of the election round.
+                            超过半数节点同意自己的选票则准备结束选举了。
                          */
                         if (termPredicate(recvset,
                                 new Vote(proposedLeader, proposedZxid,
